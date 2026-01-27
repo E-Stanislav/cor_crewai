@@ -14,7 +14,7 @@ with col1:
 with col2:
     provider = st.selectbox(
         "Провайдер LLM:",
-        ["ollama", "vllm", "zai"],
+        ["zai", "vllm", "ollama"],
         index=0
     )
 
