@@ -1,0 +1,6 @@
+crewai
+crewai-tools
+streamlit
+python-dotenv
+litellm
+litellm[proxy]
