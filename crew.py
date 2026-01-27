@@ -3,7 +3,8 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
-os.environ["CREWAI_TELEMETRY_OPT_OUT"] = 'false'
+os.environ["CREWAI_TELEMETRY_OPT_OUT"] = "true"
+os.environ["OTEL_SDK_DISABLED"] = "true"
 os.environ["LITELLM_LOG"] = "ERROR"
 
 from crewai import Agent, Task, Crew, LLM
