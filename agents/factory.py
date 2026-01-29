@@ -7,84 +7,101 @@ from crewai import Agent
 
 
 def create_manager_agent(llm, project_path: Optional[str] = None, tools: Optional[List] = None, verbose: bool = True) -> Agent:
-    backstory_text = "Ты технический руководитель DWH команды. {} Твоя задача - координировать работу агентов, делегировать задачи и обеспечивать синергию между ними. Всегда отвечай на русском языке.".format(
+    """Manager — единственный агент с инструментами и делегированием."""
+    backstory_text = "Ты технический руководитель DWH команды. {} Твоя задача - координировать работу агентов и делегировать задачи. Всегда отвечай на русском языке.".format(
         f"Проект находится по пути: {project_path}" if project_path else "Ты координируешь работу по проекту"
     )
     return Agent(
         role="Технический руководитель DWH команды",
-        goal="Координировать работу DWH команды, делегировать задачи подходящим агентам и обеспечивать синергию. Всегда отвечай на русском языке.",
+        goal="Координировать работу DWH команды. Читай файлы ОДИН раз и передавай содержимое агентам в задаче. НЕ делегируй чтение файлов — читай сам и передавай контент. Отвечай на русском.",
         backstory=backstory_text,
         verbose=verbose,
         llm=llm,
         allow_delegation=True,
-        tools=tools or []
+        tools=tools or [],
+        max_iter=10,
+        max_rpm=20
     )
 
 
 def create_python_developer(llm, project_path: Optional[str] = None, tools: Optional[List] = None, verbose: bool = True) -> Agent:
+    """Python Developer — работает с контекстом от Manager, без своих tools."""
     _ = project_path
+    _ = tools  # Не используем — получает контент от Manager
     return Agent(
         role="Python Developer",
-        goal="Разрабатывать качественный Python код для DWH решений и отвечать на русском языке. Используй доступные инструменты для чтения файлов и директорий проекта. Делегируй задачи SQL Developer если нужна работа с базой данных.",
-        backstory="Ты опытный Python разработчик специализирующийся на DWH, ETL процессах и обработке больших данных. Знаешь все лучшие практики работы с pandas, numpy, airflow, dbt. Всегда отвечай на русском языке.",
+        goal="Разрабатывать качественный Python код для DWH решений на основе предоставленного контекста. Отвечай на русском языке.",
+        backstory="Ты опытный Python разработчик специализирующийся на DWH, ETL процессах и обработке больших данных. Знаешь pandas, numpy, airflow, dbt. Всегда отвечай на русском языке.",
         verbose=verbose,
         llm=llm,
-        allow_delegation=True,
-        tools=tools or []
+        allow_delegation=False,  # Не делегирует дальше
+        tools=[],  # Не читает файлы сам
+        max_iter=5
     )
 
 
 def create_sql_developer(llm, project_path: Optional[str] = None, tools: Optional[List] = None, verbose: bool = True) -> Agent:
+    """SQL Developer — работает с контекстом от Manager, без своих tools."""
     _ = project_path
+    _ = tools
     return Agent(
         role="SQL Developer",
-        goal="Писать оптимизированные SQL запросы и модели данных для хранилища данных на русском языке. Используй доступные инструменты для чтения файлов и директорий проекта. Делегируй задачи Architect если нужны архитектурные решения.",
-        backstory="Ты эксперт по SQL и дизайну баз данных. Знаешь PostgreSQL, Snowflake, MySQL, BigQuery. Специализируешься на OLAP системах, хранилищах данных, оптимизации запросов и моделировании данных. Всегда отвечай на русском языке.",
+        goal="Писать оптимизированные SQL запросы и модели данных на основе предоставленного контекста. Отвечай на русском языке.",
+        backstory="Ты эксперт по SQL и дизайну баз данных. Знаешь PostgreSQL, Snowflake, MySQL, BigQuery. Специализируешься на OLAP системах и моделировании данных. Всегда отвечай на русском языке.",
         verbose=verbose,
         llm=llm,
-        allow_delegation=True,
-        tools=tools or []
+        allow_delegation=False,
+        tools=[],
+        max_iter=5
     )
 
 
 def create_architect(llm, project_path: Optional[str] = None, tools: Optional[List] = None, verbose: bool = True) -> Agent:
+    """Architect — работает с контекстом от Manager, без своих tools."""
     _ = project_path
+    _ = tools
     return Agent(
         role="Data Warehouse Architect",
-        goal="Проектировать архитектуру DWH систем и обеспечивать качество решений на русском языке. Используй доступные инструменты для чтения файлов и директорий проекта. Делегируй задачи Python Developer если нужна реализация на Python.",
-        backstory="Ты архитектор хранилищ данных с многолетним опытом. Знаешь методологии Data Vault, Kimball, Inmon. Эксперт в ETL/ELT процессах, data lakehouse, микросервисной архитектуре. Всегда отвечай на русском языке.",
+        goal="Проектировать архитектуру DWH систем на основе предоставленного контекста. Отвечай на русском языке.",
+        backstory="Ты архитектор хранилищ данных с многолетним опытом. Знаешь методологии Data Vault, Kimball, Inmon. Эксперт в ETL/ELT процессах. Всегда отвечай на русском языке.",
         verbose=verbose,
         llm=llm,
-        allow_delegation=True,
-        tools=tools or []
+        allow_delegation=False,
+        tools=[],
+        max_iter=5
     )
 
 
 def create_tester(llm, project_path: Optional[str] = None, tools: Optional[List] = None, verbose: bool = True) -> Agent:
+    """QA Tester — работает с контекстом от Manager, без своих tools."""
     _ = project_path
+    _ = tools
     return Agent(
         role="QA Tester",
-        goal="Обеспечивать качество кода и данных через тестирование и проверку на русском языке. Используй доступные инструменты для чтения файлов и директорий проекта. Делегируй задачи Python Developer если нужно написать тесты.",
-        backstory="Ты QA инженер специализирующийся на тестировании DWH и data pipelines. Знаешь pytest, dbt tests, data quality checks. Умеешь находить аномалии в данных и проблемы производительности. Всегда отвечай на русском языке.",
+        goal="Обеспечивать качество кода и данных через тестирование на основе предоставленного контекста. Отвечай на русском языке.",
+        backstory="Ты QA инженер специализирующийся на тестировании DWH и data pipelines. Знаешь pytest, dbt tests, data quality checks. Всегда отвечай на русском языке.",
         verbose=verbose,
         llm=llm,
-        allow_delegation=True,
-        tools=tools or []
+        allow_delegation=False,
+        tools=[],
+        max_iter=5
     )
 
 
 def create_researcher(llm, project_path: Optional[str] = None, tools: Optional[List] = None, verbose: bool = True) -> Agent:
-    backstory_text = "Ты опытный исследователь кода. {} и находишь лучшие решения. Используй доступные инструменты для чтения файлов и директорий проекта. Делегируй задачи Python Developer если нужен анализ Python кода, или SQL Developer если нужен анализ SQL. Всегда отвечай на русском языке.".format(
+    """Researcher — может читать файлы, но не делегирует."""
+    backstory_text = "Ты опытный исследователь кода. {} и находишь лучшие решения. Всегда отвечай на русском языке.".format(
         f"Проект находится по пути: {project_path}" if project_path else "Ты анализируешь предоставленный код"
     )
     return Agent(
         role="Исследователь",
-        goal="Анализировать код проекта и находить решения на русском языке",
+        goal="Анализировать код проекта и находить решения. Читай только указанные файлы, не сканируй весь проект. Отвечай на русском языке.",
         backstory=backstory_text,
         verbose=verbose,
         llm=llm,
-        allow_delegation=True,
-        tools=tools or []
+        allow_delegation=False,  # Не делегирует
+        tools=tools or [],  # Может читать файлы
+        max_iter=5
     )
 
 
@@ -97,30 +114,28 @@ def create_dwh_agents(
 ) -> Dict[str, Agent]:
     """Создаёт всех агентов DWH команды с индивидуальными температурами.
     
-    Args:
-        llm_factory: Функция, создающая LLM с заданной температурой
-        project_path: Путь к проекту
-        tools: Инструменты для агентов
-        verbose: Подробный вывод
-        temperatures: Словарь с температурами для каждой роли
+    Архитектура оптимизирована для экономии токенов:
+    - Manager: имеет tools, читает файлы, делегирует задачи с контекстом
+    - Researcher: имеет tools, читает файлы, НЕ делегирует
+    - Остальные: НЕ имеют tools, получают контент от Manager в задаче
     """
-    # Дефолтные температуры оптимизированы под задачи агентов
     default_temps = {
-        "manager": 0.4,      # Точные решения, координация
-        "researcher": 0.6,   # Анализ, поиск паттернов
-        "architect": 0.7,    # Креативные архитектурные решения
-        "python_dev": 0.3,   # Точный код без галлюцинаций
-        "sql_dev": 0.2,      # SQL должен быть максимально точным
-        "tester": 0.4,       # Точные тест-кейсы
+        "manager": 0.4,
+        "researcher": 0.6,
+        "architect": 0.7,
+        "python_dev": 0.3,
+        "sql_dev": 0.2,
+        "tester": 0.4,
     }
     
     temps = {**default_temps, **(temperatures or {})}
     
     return {
         "manager": create_manager_agent(llm_factory(temps["manager"]), project_path, tools, verbose),
-        "python_dev": create_python_developer(llm_factory(temps["python_dev"]), project_path, tools, verbose),
-        "sql_dev": create_sql_developer(llm_factory(temps["sql_dev"]), project_path, tools, verbose),
-        "architect": create_architect(llm_factory(temps["architect"]), project_path, tools, verbose),
-        "tester": create_tester(llm_factory(temps["tester"]), project_path, tools, verbose),
-        "researcher": create_researcher(llm_factory(temps["researcher"]), project_path, tools, verbose)
+        "researcher": create_researcher(llm_factory(temps["researcher"]), project_path, tools, verbose),
+        # Остальные агенты без tools — получают контекст от Manager
+        "python_dev": create_python_developer(llm_factory(temps["python_dev"]), project_path, None, verbose),
+        "sql_dev": create_sql_developer(llm_factory(temps["sql_dev"]), project_path, None, verbose),
+        "architect": create_architect(llm_factory(temps["architect"]), project_path, None, verbose),
+        "tester": create_tester(llm_factory(temps["tester"]), project_path, None, verbose),
     }
