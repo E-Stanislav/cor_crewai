@@ -193,3 +193,175 @@ def find_files_by_pattern(project_path: str, pattern: str) -> List[str]:
                 matches.append(os.path.join(root, filename))
     
     return matches
+
+
+def scan_project_structure(project_path: str, max_depth: int = 2, max_files: int = 50) -> str:
+    """Сканирует структуру проекта и возвращает текстовое представление.
+
+    Args:
+        project_path: Путь к проекту.
+        max_depth: Максимальная глубина сканирования.
+        max_files: Максимальное количество файлов для отображения.
+
+    Returns:
+        Текстовое представление структуры проекта.
+    """
+    if not is_path_valid(project_path):
+        return "Путь не существует"
+    
+    ignored_dirs = {
+        ".git", "venv", ".venv", "__pycache__", ".pytest_cache", 
+        ".mypy_cache", ".ruff_cache", ".idea", ".vscode", "node_modules",
+        ".tox", ".eggs", "*.egg-info", "dist", "build", ".cache"
+    }
+    ignored_files = {".DS_Store", "Thumbs.db", ".gitignore"}
+    
+    lines = []
+    file_count = 0
+    
+    def walk(path: str, prefix: str = "", depth: int = 0):
+        nonlocal file_count
+        if depth > max_depth or file_count >= max_files:
+            return
+        
+        try:
+            entries = sorted(os.listdir(path))
+        except PermissionError:
+            return
+        
+        dirs = []
+        files = []
+        
+        for entry in entries:
+            if entry in ignored_dirs or entry in ignored_files:
+                continue
+            full_path = os.path.join(path, entry)
+            if os.path.isdir(full_path):
+                dirs.append(entry)
+            else:
+                files.append(entry)
+        
+        for f in files:
+            if file_count >= max_files:
+                lines.append(f"{prefix}... (ещё файлы)")
+                return
+            lines.append(f"{prefix}{f}")
+            file_count += 1
+        
+        for i, d in enumerate(dirs):
+            if file_count >= max_files:
+                return
+            is_last = (i == len(dirs) - 1)
+            lines.append(f"{prefix}{d}/")
+            new_prefix = prefix + ("    " if is_last else "│   ")
+            walk(os.path.join(path, d), new_prefix, depth + 1)
+    
+    walk(project_path)
+    return "\n".join(lines) if lines else "(пусто)"
+
+
+def find_key_files(project_path: str, max_files: int = 15) -> List[str]:
+    """Автоматически определяет ключевые файлы проекта.
+
+    Ищет типичные важные файлы: README, конфиги, точки входа, тесты.
+
+    Args:
+        project_path: Путь к проекту.
+        max_files: Максимальное количество файлов.
+
+    Returns:
+        Список путей к ключевым файлам.
+    """
+    if not is_path_valid(project_path):
+        return []
+    
+    key_files = []
+    
+    # Приоритетные паттерны (в порядке важности)
+    priority_patterns = [
+        # Документация
+        ("README*", 1),
+        ("CHANGELOG*", 2),
+        ("docs/*.md", 3),
+        # Конфигурация проекта
+        ("pyproject.toml", 1),
+        ("setup.py", 1),
+        ("setup.cfg", 2),
+        ("package.json", 1),
+        ("Cargo.toml", 1),
+        ("go.mod", 1),
+        ("pom.xml", 1),
+        ("build.gradle", 1),
+        # Конфиги приложения
+        ("config.yaml", 1),
+        ("config.yml", 1),
+        ("config.json", 1),
+        ("*.config.js", 2),
+        ("*.config.ts", 2),
+        (".env.example", 2),
+        ("settings.py", 2),
+        ("conf/*.yaml", 3),
+        ("conf/*.yml", 3),
+        # Зависимости
+        ("requirements.txt", 1),
+        ("requirements*.txt", 2),
+        ("Pipfile", 2),
+        ("poetry.lock", 3),
+        # Точки входа
+        ("main.py", 1),
+        ("app.py", 1),
+        ("__main__.py", 1),
+        ("index.js", 1),
+        ("index.ts", 1),
+        ("src/main.*", 2),
+        ("src/index.*", 2),
+        ("src/app.*", 2),
+        # CI/CD
+        (".github/workflows/*.yml", 3),
+        (".gitlab-ci.yml", 3),
+        ("Dockerfile", 2),
+        ("docker-compose.yml", 2),
+        ("Makefile", 2),
+        # Тесты
+        ("tests/test_*.py", 3),
+        ("test_*.py", 3),
+        ("*_test.py", 3),
+    ]
+    
+    from fnmatch import fnmatch
+    
+    found = {}  # path -> priority
+    
+    ignored_dirs = {
+        ".git", "venv", ".venv", "__pycache__", ".pytest_cache", 
+        ".mypy_cache", ".ruff_cache", ".idea", ".vscode", "node_modules",
+        ".tox", ".eggs", "dist", "build", ".cache"
+    }
+    
+    for root, dirs, files in os.walk(project_path):
+        # Пропускаем игнорируемые директории
+        dirs[:] = [d for d in dirs if d not in ignored_dirs]
+        
+        rel_root = os.path.relpath(root, project_path)
+        if rel_root == ".":
+            rel_root = ""
+        
+        for filename in files:
+            if rel_root:
+                rel_path = f"{rel_root}/{filename}"
+            else:
+                rel_path = filename
+            
+            full_path = os.path.join(root, filename)
+            
+            for pattern, priority in priority_patterns:
+                if fnmatch(rel_path, pattern) or fnmatch(filename, pattern):
+                    if full_path not in found or found[full_path] > priority:
+                        found[full_path] = priority
+                    break
+    
+    # Сортируем по приоритету и берём top N
+    sorted_files = sorted(found.items(), key=lambda x: x[1])
+    key_files = [path for path, _ in sorted_files[:max_files]]
+    
+    return key_files

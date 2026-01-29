@@ -8,11 +8,11 @@ os.environ["LITELLM_LOG"] = "ERROR"
 from crewai import Agent, Task, Crew, LLM
 from crewai_tools import FileReadTool
 from agents.factory import create_dwh_agents
-from utils.file_utils import get_project_info, is_path_valid
+from utils.file_utils import get_project_info, is_path_valid, scan_project_structure, find_key_files
 from models.schemas import ResearchTeamResponse
 
 
-def get_llm(provider: str) -> LLM:
+def get_llm(provider: str, temperature: float = 0.7) -> LLM:
     if provider == "zai":
         api_key = os.getenv("ZAI_API_KEY")
         if not api_key or api_key == "your_api_key_here":
@@ -21,7 +21,7 @@ def get_llm(provider: str) -> LLM:
             model=os.getenv("ZAI_MODEL", "zai/zai-model"),
             api_key=api_key,
             api_base=os.getenv("ZAI_BASE_URL", "https://api.zai.ai/v1"),
-            temperature=0.7
+            temperature=temperature
         )
     elif provider == "ollama":
         base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
@@ -34,7 +34,7 @@ def get_llm(provider: str) -> LLM:
             api_base=base,
             api_key="dummy",
             provider="openai",
-            temperature=0.7
+            temperature=temperature
         )
     elif provider == "vllm":
         base = os.getenv("VLLM_BASE_URL", "http://localhost:8000/v1")
@@ -46,35 +46,50 @@ def get_llm(provider: str) -> LLM:
             model=os.getenv("VLLM_MODEL", "openai/meta-llama/Llama-2-7b-chat-hf"),
             api_key=os.getenv("VLLM_API_KEY", "dummy"),
             api_base=base,
-            temperature=0.7
+            temperature=temperature
         )
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
 
-def create_agents(llm, project_path: Optional[str] = None, verbose: bool = True):
+# Оптимальные температуры для разных ролей
+AGENT_TEMPERATURES = {
+    "manager": 0.4,      # Точные решения, координация
+    "researcher": 0.6,   # Анализ, поиск паттернов
+    "architect": 0.7,    # Креативные архитектурные решения
+    "python_dev": 0.3,   # Точный код без галлюцинаций
+    "sql_dev": 0.2,      # SQL должен быть максимально точным
+    "tester": 0.4,       # Точные тест-кейсы
+    "writer": 0.85,      # Креативный текст
+}
+
+
+def create_agents(provider: str, project_path: Optional[str] = None, verbose: bool = True):
+    # Исследователь: средняя температура для баланса точности и креативности
+    researcher_llm = get_llm(provider, temperature=AGENT_TEMPERATURES["researcher"])
     researcher = Agent(
         role="Исследователь",
         goal="Проводить глубокий анализ и исследование заданной темы и отвечать на русском языке",
         backstory="Ты опытный исследователь с аналитическим мышлением, который умеет находить и структурировать информацию. Всегда отвечай на русском языке.",
         verbose=verbose,
-        llm=llm
+        llm=researcher_llm
     )
     
+    # Писатель: высокая температура для креативного текста
+    writer_llm = get_llm(provider, temperature=AGENT_TEMPERATURES["writer"])
     writer = Agent(
         role="Писатель",
         goal="Создавать качественный контент на основе предоставленной информации на русском языке",
         backstory="Ты талантливый писатель, который превращает исследования в понятный и привлекательный текст. Всегда пиши на русском языке.",
         verbose=verbose,
-        llm=llm
+        llm=writer_llm
     )
     
     return researcher, writer
 
 
 def create_crew(topic: str, provider: str = "ollama", structured_output: bool = False, verbose: bool = True) -> Crew:
-    llm = get_llm(provider)
-    researcher, writer = create_agents(llm, verbose=verbose)
+    researcher, writer = create_agents(provider, verbose=verbose)
     
     if structured_output:
         research_task = Task(
@@ -106,8 +121,6 @@ def create_crew(topic: str, provider: str = "ollama", structured_output: bool = 
 
 
 def create_dwh_crew(project_name: str, user_request: str, provider: str = "ollama", selected_agents: Optional[List[str]] = None, verbose: bool = True) -> Crew:
-    llm = get_llm(provider)
-
     project_info = get_project_info(project_name)
     if not project_info:
         raise ValueError(f"Проект '{project_name}' не найден в конфигурации")
@@ -119,7 +132,11 @@ def create_dwh_crew(project_name: str, user_request: str, provider: str = "ollam
     file_read_tool = FileReadTool()
     tools = [file_read_tool]
 
-    agents = create_dwh_agents(llm, project_path, tools, verbose)
+    # Создаём фабрику LLM с нужной температурой
+    def llm_factory(temperature: float):
+        return get_llm(provider, temperature)
+
+    agents = create_dwh_agents(llm_factory, project_path, tools, verbose)
     if selected_agents:
         label_to_key = {
             "Исследователь": "researcher",
@@ -137,16 +154,12 @@ def create_dwh_crew(project_name: str, user_request: str, provider: str = "ollam
 
     manager_agent = agents["manager"]
 
-    try:
-        root_entries = sorted(os.listdir(project_path))
-    except Exception:
-        root_entries = []
-    ignored = {".git", "venv", ".venv", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".idea", ".vscode"}
-    root_entries = [e for e in root_entries if e not in ignored]
-    if len(root_entries) > 60:
-        root_listing = ", ".join(root_entries[:60]) + ", …"
-    else:
-        root_listing = ", ".join(root_entries)
+    # Автоматическое сканирование структуры проекта
+    project_structure = scan_project_structure(project_path, max_depth=2, max_files=40)
+    
+    # Автоматическое определение ключевых файлов
+    key_files = find_key_files(project_path, max_files=12)
+    key_files_list = "\n    ".join(f"- {f}" for f in key_files) if key_files else "- (не найдены)"
 
     context = f"""
     Проект: {project_name}
@@ -155,15 +168,11 @@ def create_dwh_crew(project_name: str, user_request: str, provider: str = "ollam
     База данных: {project_info.get('database', {}).get('type', 'Не указана')}
     Путь к проекту: {project_path}
 
-    Корень проекта (без .git/venv): {root_listing}
+    Структура проекта:
+    {project_structure}
 
-    Ключевые файлы (их можно читать через FileReadTool по полному пути):
-    - {project_path}/README.md
-    - {project_path}/app.py
-    - {project_path}/crew.py
-    - {project_path}/config.yaml
-    - {project_path}/requirements.txt
-    - {project_path}/agents/factory.py
+    Ключевые файлы (автоматически определены, можно читать через FileReadTool):
+    {key_files_list}
 
     Доступные агенты:
     - Исследователь: анализирует структуру проекта и код

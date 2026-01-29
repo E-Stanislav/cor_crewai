@@ -2,7 +2,7 @@ import os
 os.environ["CREWAI_TELEMETRY_OPT_OUT"] = "true"
 os.environ["OTEL_SDK_DISABLED"] = "true"
 os.environ["LITELLM_LOG"] = "ERROR"
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Callable
 from crewai import Agent
 
 
@@ -88,12 +88,39 @@ def create_researcher(llm, project_path: Optional[str] = None, tools: Optional[L
     )
 
 
-def create_dwh_agents(llm, project_path: Optional[str] = None, tools: Optional[List] = None, verbose: bool = True) -> Dict[str, Agent]:
+def create_dwh_agents(
+    llm_factory: Callable[[float], object],
+    project_path: Optional[str] = None,
+    tools: Optional[List] = None,
+    verbose: bool = True,
+    temperatures: Optional[Dict[str, float]] = None
+) -> Dict[str, Agent]:
+    """Создаёт всех агентов DWH команды с индивидуальными температурами.
+    
+    Args:
+        llm_factory: Функция, создающая LLM с заданной температурой
+        project_path: Путь к проекту
+        tools: Инструменты для агентов
+        verbose: Подробный вывод
+        temperatures: Словарь с температурами для каждой роли
+    """
+    # Дефолтные температуры оптимизированы под задачи агентов
+    default_temps = {
+        "manager": 0.4,      # Точные решения, координация
+        "researcher": 0.6,   # Анализ, поиск паттернов
+        "architect": 0.7,    # Креативные архитектурные решения
+        "python_dev": 0.3,   # Точный код без галлюцинаций
+        "sql_dev": 0.2,      # SQL должен быть максимально точным
+        "tester": 0.4,       # Точные тест-кейсы
+    }
+    
+    temps = {**default_temps, **(temperatures or {})}
+    
     return {
-        "manager": create_manager_agent(llm, project_path, tools, verbose),
-        "python_dev": create_python_developer(llm, project_path, tools, verbose),
-        "sql_dev": create_sql_developer(llm, project_path, tools, verbose),
-        "architect": create_architect(llm, project_path, tools, verbose),
-        "tester": create_tester(llm, project_path, tools, verbose),
-        "researcher": create_researcher(llm, project_path, tools, verbose)
+        "manager": create_manager_agent(llm_factory(temps["manager"]), project_path, tools, verbose),
+        "python_dev": create_python_developer(llm_factory(temps["python_dev"]), project_path, tools, verbose),
+        "sql_dev": create_sql_developer(llm_factory(temps["sql_dev"]), project_path, tools, verbose),
+        "architect": create_architect(llm_factory(temps["architect"]), project_path, tools, verbose),
+        "tester": create_tester(llm_factory(temps["tester"]), project_path, tools, verbose),
+        "researcher": create_researcher(llm_factory(temps["researcher"]), project_path, tools, verbose)
     }
