@@ -1,0 +1,8 @@
+projects:
+  - name: "cor_crewai"
+    path: "/Users/stanislave/Documents/Projects/cor_crewai"
+    description: "Пример DWH проекта"
+    tech_stack:
+      - "Python"
+      - "SQL"
+      - "ИИ"

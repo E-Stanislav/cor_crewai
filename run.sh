@@ -16,4 +16,7 @@ pip install -r requirements.txt
 
 # Запускаем Streamlit приложение
 echo "Запуск приложения..."
+export CREWAI_TELEMETRY_OPT_OUT=true
+export OTEL_SDK_DISABLED=true
+export LITELLM_LOG=ERROR
 streamlit run app.py
