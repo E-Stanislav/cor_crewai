@@ -6,7 +6,7 @@ os.environ["CREWAI_TELEMETRY_OPT_OUT"] = "true"
 os.environ["OTEL_SDK_DISABLED"] = "true"
 os.environ["LITELLM_LOG"] = "ERROR"
 from crewai import Agent, Task, Crew, LLM
-from crewai_tools import DirectoryReadTool, FileReadTool
+from crewai_tools import FileReadTool
 from agents.factory import create_dwh_agents
 from utils.file_utils import get_project_info, is_path_valid
 from models.schemas import ResearchTeamResponse
@@ -105,7 +105,7 @@ def create_crew(topic: str, provider: str = "ollama", structured_output: bool = 
     return crew
 
 
-def create_dwh_crew(project_name: str, user_request: str, provider: str = "ollama", selected_agents: Optional[List[str]] = None, verbose: bool = False) -> Crew:
+def create_dwh_crew(project_name: str, user_request: str, provider: str = "ollama", selected_agents: Optional[List[str]] = None, verbose: bool = True) -> Crew:
     llm = get_llm(provider)
 
     project_info = get_project_info(project_name)
@@ -116,10 +116,8 @@ def create_dwh_crew(project_name: str, user_request: str, provider: str = "ollam
     if not is_path_valid(project_path):
         raise ValueError(f"Путь к проекту не существует: {project_path}")
 
-    directory_read_tool = DirectoryReadTool(directory=project_path)
-    file_read_tool = FileReadTool(directory=project_path)
-
-    tools = [directory_read_tool, file_read_tool]
+    file_read_tool = FileReadTool()
+    tools = [file_read_tool]
 
     agents = create_dwh_agents(llm, project_path, tools, verbose)
     if selected_agents:
@@ -139,12 +137,33 @@ def create_dwh_crew(project_name: str, user_request: str, provider: str = "ollam
 
     manager_agent = agents["manager"]
 
+    try:
+        root_entries = sorted(os.listdir(project_path))
+    except Exception:
+        root_entries = []
+    ignored = {".git", "venv", ".venv", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".idea", ".vscode"}
+    root_entries = [e for e in root_entries if e not in ignored]
+    if len(root_entries) > 60:
+        root_listing = ", ".join(root_entries[:60]) + ", …"
+    else:
+        root_listing = ", ".join(root_entries)
+
     context = f"""
     Проект: {project_name}
     Описание: {project_info.get('description', 'Нет описания')}
     Технологии: {', '.join(project_info.get('tech_stack', []))}
     База данных: {project_info.get('database', {}).get('type', 'Не указана')}
     Путь к проекту: {project_path}
+
+    Корень проекта (без .git/venv): {root_listing}
+
+    Ключевые файлы (их можно читать через FileReadTool по полному пути):
+    - {project_path}/README.md
+    - {project_path}/app.py
+    - {project_path}/crew.py
+    - {project_path}/config.yaml
+    - {project_path}/requirements.txt
+    - {project_path}/agents/factory.py
 
     Доступные агенты:
     - Исследователь: анализирует структуру проекта и код
@@ -166,7 +185,8 @@ def create_dwh_crew(project_name: str, user_request: str, provider: str = "ollam
         Правила:
         - Если вопрос "что это за проект" (или близко) — ответь сам кратко (5-8 пунктов), без делегирования.
         - Иначе делегируй максимум 1-2 агентам (если они доступны) и попроси их выполнить узкую часть задачи.
-        - Не читай весь проект целиком. Если нужно — попроси прочитать 1-3 конкретных файла/папки.
+        - Не перечисляй весь проект рекурсивно. Читай только 1-3 конкретных файла через FileReadTool.
+        - У тебя ЕСТЬ доступ к инструментам чтения файлов. Никогда не отвечай фразами вида "I can't access files/tools".
         - Финальный ответ: на русском, структурировано, с конкретными шагами/рекомендациями.
         """,
         expected_output="Координированный результат работы всей команды с решениями, кодом и рекомендациями, или описание мультиагентной системы.",

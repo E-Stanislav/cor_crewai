@@ -21,7 +21,7 @@ def create_manager_agent(llm, project_path: Optional[str] = None, tools: Optiona
     )
 
 
-def create_python_developer(llm, project_path: Optional[str] = None, tools: Optional[List] = None, verbose: bool = False) -> Agent:
+def create_python_developer(llm, project_path: Optional[str] = None, tools: Optional[List] = None, verbose: bool = True) -> Agent:
     _ = project_path
     return Agent(
         role="Python Developer",
@@ -34,7 +34,7 @@ def create_python_developer(llm, project_path: Optional[str] = None, tools: Opti
     )
 
 
-def create_sql_developer(llm, project_path: Optional[str] = None, tools: Optional[List] = None, verbose: bool = False) -> Agent:
+def create_sql_developer(llm, project_path: Optional[str] = None, tools: Optional[List] = None, verbose: bool = True) -> Agent:
     _ = project_path
     return Agent(
         role="SQL Developer",
@@ -47,7 +47,7 @@ def create_sql_developer(llm, project_path: Optional[str] = None, tools: Optiona
     )
 
 
-def create_architect(llm, project_path: Optional[str] = None, tools: Optional[List] = None, verbose: bool = False) -> Agent:
+def create_architect(llm, project_path: Optional[str] = None, tools: Optional[List] = None, verbose: bool = True) -> Agent:
     _ = project_path
     return Agent(
         role="Data Warehouse Architect",
@@ -60,7 +60,7 @@ def create_architect(llm, project_path: Optional[str] = None, tools: Optional[Li
     )
 
 
-def create_tester(llm, project_path: Optional[str] = None, tools: Optional[List] = None, verbose: bool = False) -> Agent:
+def create_tester(llm, project_path: Optional[str] = None, tools: Optional[List] = None, verbose: bool = True) -> Agent:
     _ = project_path
     return Agent(
         role="QA Tester",
@@ -73,7 +73,7 @@ def create_tester(llm, project_path: Optional[str] = None, tools: Optional[List]
     )
 
 
-def create_researcher(llm, project_path: Optional[str] = None, tools: Optional[List] = None, verbose: bool = False) -> Agent:
+def create_researcher(llm, project_path: Optional[str] = None, tools: Optional[List] = None, verbose: bool = True) -> Agent:
     backstory_text = "Ты опытный исследователь кода. {} и находишь лучшие решения. Используй доступные инструменты для чтения файлов и директорий проекта. Делегируй задачи Python Developer если нужен анализ Python кода, или SQL Developer если нужен анализ SQL. Всегда отвечай на русском языке.".format(
         f"Проект находится по пути: {project_path}" if project_path else "Ты анализируешь предоставленный код"
     )
@@ -88,7 +88,7 @@ def create_researcher(llm, project_path: Optional[str] = None, tools: Optional[L
     )
 
 
-def create_dwh_agents(llm, project_path: Optional[str] = None, tools: Optional[List] = None, verbose: bool = False) -> Dict[str, Agent]:
+def create_dwh_agents(llm, project_path: Optional[str] = None, tools: Optional[List] = None, verbose: bool = True) -> Dict[str, Agent]:
     return {
         "manager": create_manager_agent(llm, project_path, tools, verbose),
         "python_dev": create_python_developer(llm, project_path, tools, verbose),
