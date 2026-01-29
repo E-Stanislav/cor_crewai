@@ -15,9 +15,15 @@ st.set_page_config(
 
 st.markdown("""
 <style>
+    /* Основной контейнер - занимает весь экран */
+    .stMain {
+        height: 100vh;
+        overflow: hidden;
+    }
+    
     /* Основные стили чата */
     .stChatMessage {
-        padding: 1rem 1.5rem;
+        padding: 0.75rem 1rem;
         border-radius: 1rem;
         margin-bottom: 0.5rem;
     }
@@ -25,9 +31,30 @@ st.markdown("""
     /* Скрыть дефолтный footer */
     footer {visibility: hidden;}
     
-    /* Стили для input */
+    /* Фиксированный input внизу */
     .stChatInput {
-        border-radius: 1.5rem;
+        position: fixed !important;
+        bottom: 1rem !important;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        width: calc(100% - 2rem) !important;
+        max-width: 800px !important;
+        z-index: 1000 !important;
+        background: var(--background-color, white) !important;
+        padding: 0.5rem !important;
+        border-radius: 1.5rem !important;
+        box-shadow: 0 -2px 10px rgba(0,0,0,0.1) !important;
+    }
+    
+    /* При открытом сайдбаре смещаем input */
+    [data-testid="stSidebar"][aria-expanded="true"] ~ .stMain .stChatInput {
+        left: calc(50% + 150px) !important;
+    }
+    
+    /* Контейнер чата с правильной высотой */
+    [data-testid="stVerticalBlock"] > [data-testid="element-container"]:has(.stChatMessage) {
+        max-height: calc(100vh - 200px) !important;
+        overflow-y: auto !important;
     }
     
     /* Анимация печати */
@@ -40,32 +67,18 @@ st.markdown("""
         animation: pulse 1.5s ease-in-out infinite;
     }
     
-    /* Компактный header */
-    .chat-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0.5rem 0;
-        border-bottom: 1px solid #e0e0e0;
-        margin-bottom: 1rem;
+    /* Убираем лишние отступы сверху */
+    .block-container {
+        padding-top: 1rem !important;
+        padding-bottom: 100px !important;
     }
     
-    /* Кнопки настроек */
-    .settings-btn {
-        background: transparent;
-        border: 1px solid #ccc;
-        border-radius: 0.5rem;
-        padding: 0.25rem 0.75rem;
-        cursor: pointer;
-    }
-    
-    /* Компактные tabs */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 0.5rem;
-    }
-    
-    .stTabs [data-baseweb="tab"] {
-        padding: 0.5rem 1rem;
+    /* Темная тема */
+    @media (prefers-color-scheme: dark) {
+        .stChatInput {
+            background: #262730 !important;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.3) !important;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -78,6 +91,8 @@ if "research_settings_open" not in st.session_state:
     st.session_state.research_settings_open = False
 if "dwh_settings_open" not in st.session_state:
     st.session_state.dwh_settings_open = False
+if "active_tab" not in st.session_state:
+    st.session_state.active_tab = "research"
 
 
 def render_chat_messages(messages: list, container):
@@ -102,146 +117,127 @@ def render_chat_messages(messages: list, container):
                     st.markdown(msg["content"])
 
 
-def render_settings_sidebar(tab_name: str):
-    if tab_name == "research":
-        with st.sidebar:
-            st.markdown("### ⚙️ Настройки исследования")
-            st.divider()
-            
-            provider = st.selectbox(
-                "🔌 Провайдер LLM",
-                ["zai", "vllm", "ollama"],
-                index=2,
-                key="research_provider",
-                help="Выберите провайдера для языковой модели"
+# === SIDEBAR: Общие настройки ===
+with st.sidebar:
+    st.markdown("## ⚙️ Настройки")
+    
+    # Переключатель команды
+    team_mode = st.radio(
+        "Команда:",
+        ["🔬 Исследовательская", "🏗️ DWH"],
+        horizontal=True,
+        key="team_mode"
+    )
+    
+    st.divider()
+    
+    # Общие настройки провайдера
+    provider = st.selectbox(
+        "🔌 Провайдер LLM",
+        ["zai", "vllm", "ollama"],
+        index=2,
+        key="llm_provider",
+        help="Выберите провайдера для языковой модели"
+    )
+    
+    verbose_logs = st.toggle(
+        "📝 Подробные логи",
+        value=True,
+        key="verbose_logs"
+    )
+    
+    st.divider()
+    
+    # Настройки для Исследовательской команды
+    if team_mode == "🔬 Исследовательская":
+        structured_output = st.toggle(
+            "📋 Структурированный ответ (JSON)",
+            value=False,
+            key="research_structured_output"
+        )
+        selected_project = None
+        selected_agents = None
+        
+        st.divider()
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🗑️ Очистить", use_container_width=True, key="clear_research"):
+                st.session_state.research_chat = []
+                st.rerun()
+        with col2:
+            msg_count = len(st.session_state.research_chat)
+            st.metric("Сообщений", msg_count)
+    
+    # Настройки для DWH команды
+    else:
+        structured_output = False
+        
+        try:
+            projects = get_project_list()
+        except FileNotFoundError:
+            projects = []
+        
+        if projects:
+            selected_project = st.selectbox(
+                "📁 Проект",
+                projects,
+                index=0,
+                key="dwh_project"
             )
-            
-            structured_output = st.toggle(
-                "📋 Структурированный ответ (JSON)",
-                value=False,
-                key="research_structured_output"
+            project_info = get_project_info(selected_project) if selected_project else None
+            if project_info:
+                with st.expander("ℹ️ Информация о проекте", expanded=False):
+                    st.markdown(f"**Описание:** {project_info.get('description', 'Нет описания')}")
+                    st.markdown(f"**Стек:** {', '.join(project_info.get('tech_stack', []))}")
+                    st.markdown(f"**БД:** {project_info.get('database', {}).get('type', 'Не указана')}")
+                    st.code(project_info.get('path', 'Не указан'), language=None)
+                if not is_path_valid(project_info.get("path", "")):
+                    st.error(f"⚠️ Путь не существует")
+        else:
+            st.warning("Проекты не найдены в `config.yaml`")
+            selected_project = None
+        
+        st.divider()
+        
+        use_all_agents = st.toggle(
+            "👥 Все агенты",
+            value=True,
+            key="use_all_agents"
+        )
+        
+        selected_agents = None
+        if not use_all_agents:
+            selected_agents = st.multiselect(
+                "Выберите агентов:",
+                ["Исследователь", "Architect", "Python Developer", "SQL Developer", "Tester"],
+                default=["Исследователь", "Python Developer"],
+                key="dwh_agents"
             )
-            
-            verbose_logs = st.toggle(
-                "📝 Подробные логи",
-                value=True,
-                key="research_verbose"
-            )
-            
-            st.divider()
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("🗑️ Очистить", use_container_width=True, key="clear_research"):
-                    st.session_state.research_chat = []
-                    st.rerun()
-            with col2:
-                msg_count = len(st.session_state.research_chat)
-                st.metric("Сообщений", msg_count)
-                
-            return provider, structured_output, verbose_logs
-            
-    else:  # dwh
-        with st.sidebar:
-            st.markdown("### ⚙️ Настройки DWH")
-            st.divider()
-            
-            try:
-                projects = get_project_list()
-            except FileNotFoundError:
-                projects = []
-            
-            if projects:
-                selected_project = st.selectbox(
-                    "📁 Проект",
-                    projects,
-                    index=0,
-                    key="dwh_project"
-                )
-                project_info = get_project_info(selected_project) if selected_project else None
-                if project_info:
-                    with st.expander("ℹ️ Информация о проекте", expanded=False):
-                        st.markdown(f"**Описание:** {project_info.get('description', 'Нет описания')}")
-                        st.markdown(f"**Стек:** {', '.join(project_info.get('tech_stack', []))}")
-                        st.markdown(f"**БД:** {project_info.get('database', {}).get('type', 'Не указана')}")
-                        st.code(project_info.get('path', 'Не указан'), language=None)
-                    if not is_path_valid(project_info.get("path", "")):
-                        st.error(f"⚠️ Путь не существует")
-            else:
-                st.warning("Проекты не найдены в `config.yaml`")
-                selected_project = None
-            
-            st.divider()
-            
-            provider = st.selectbox(
-                "🔌 Провайдер LLM",
-                ["zai", "vllm", "ollama"],
-                index=2,
-                key="dwh_provider"
-            )
-            
-            verbose_logs = st.toggle(
-                "📝 Подробные логи",
-                value=True,
-                key="dwh_verbose"
-            )
-            
-            st.divider()
-            
-            use_all_agents = st.toggle(
-                "👥 Все агенты",
-                value=True,
-                key="use_all_agents"
-            )
-            
-            selected_agents = None
-            if not use_all_agents:
-                selected_agents = st.multiselect(
-                    "Выберите агентов:",
-                    ["Исследователь", "Architect", "Python Developer", "SQL Developer", "Tester"],
-                    default=["Исследователь", "Python Developer"],
-                    key="dwh_agents"
-                )
-            
-            st.divider()
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("🗑️ Очистить", use_container_width=True, key="clear_dwh"):
-                    st.session_state.dwh_chat = []
-                    st.rerun()
-            with col2:
-                msg_count = len(st.session_state.dwh_chat)
-                st.metric("Сообщений", msg_count)
-                
-            return selected_project, provider, verbose_logs, selected_agents
+        
+        st.divider()
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🗑️ Очистить", use_container_width=True, key="clear_dwh"):
+                st.session_state.dwh_chat = []
+                st.rerun()
+        with col2:
+            msg_count = len(st.session_state.dwh_chat)
+            st.metric("Сообщений", msg_count)
 
 
 # Основной интерфейс
-col_main, col_info = st.columns([4, 1])
+st.markdown("## 🤖 Multi-Agent DWH System")
 
-with col_main:
-    st.markdown("## 🤖 Multi-Agent DWH System")
-
-with col_info:
-    st.markdown("")
-
-tab1, tab2 = st.tabs(["🔬 Исследовательская команда", "🏗️ DWH Команда"])
-
-# === TAB 1: Исследовательская команда ===
-with tab1:
-    provider, structured_output, verbose_logs = render_settings_sidebar("research")
-    
+# Показываем соответствующий чат в зависимости от выбранной команды
+if team_mode == "🔬 Исследовательская":
     # Контейнер для чата
-    chat_container = st.container(height=550)
+    chat_container = st.container()
     render_chat_messages(st.session_state.research_chat, chat_container)
     
     # Поле ввода
-    if prompt := st.chat_input("💬 Введите тему для исследования...", key="research_input"):
-        # Добавляем сообщение пользователя
+    if prompt := st.chat_input("💬 Введите тему для исследования..."):
         st.session_state.research_chat.append({"role": "user", "content": prompt})
         
-        # Показываем в чате
         with chat_container:
             with st.chat_message("user", avatar="🧑‍💻"):
                 st.markdown(prompt)
@@ -271,21 +267,15 @@ with tab1:
         
         st.rerun()
 
-# === TAB 2: DWH Команда ===
-with tab2:
-    settings = render_settings_sidebar("dwh")
-    selected_project, provider, verbose_logs, selected_agents = settings
-    
+else:  # DWH Команда
     # Контейнер для чата
-    chat_container = st.container(height=550)
+    chat_container = st.container()
     render_chat_messages(st.session_state.dwh_chat, chat_container)
     
     # Поле ввода
-    if prompt := st.chat_input("💬 Опишите задачу для DWH команды...", key="dwh_input"):
-        # Добавляем сообщение пользователя
+    if prompt := st.chat_input("💬 Опишите задачу для DWH команды..."):
         st.session_state.dwh_chat.append({"role": "user", "content": prompt})
         
-        # Показываем в чате
         with chat_container:
             with st.chat_message("user", avatar="🧑‍💻"):
                 st.markdown(prompt)
