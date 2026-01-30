@@ -12,7 +12,7 @@ from utils.file_utils import get_project_info, is_path_valid, scan_project_struc
 from models.schemas import ResearchTeamResponse
 
 
-def get_llm(provider: str, temperature: float = 0.7) -> LLM:
+def get_llm(provider: str, temperature: float = 0.7, thinking_budget: Optional[int] = None) -> LLM:
     if provider == "zai":
         api_key = os.getenv("ZAI_API_KEY")
         if not api_key or api_key == "your_api_key_here":
@@ -42,11 +42,22 @@ def get_llm(provider: str, temperature: float = 0.7) -> LLM:
             base = base[:-1]
         if not base.endswith("/v1"):
             base = f"{base}/v1"
+        
+        # Параметры для reasoning моделей (Qwen3, DeepSeek и др.)
+        extra_body = {}
+        enable_thinking = os.getenv("VLLM_ENABLE_THINKING", "false").lower() == "true"
+        if enable_thinking:
+            # thinking_budget: количество токенов на размышления
+            budget = thinking_budget or int(os.getenv("VLLM_THINKING_BUDGET", "4096"))
+            extra_body["chat_template_kwargs"] = {"enable_thinking": True}
+            extra_body["thinking"] = {"type": "enabled", "budget_tokens": budget}
+        
         return LLM(
             model=os.getenv("VLLM_MODEL", "openai/meta-llama/Llama-2-7b-chat-hf"),
             api_key=os.getenv("VLLM_API_KEY", "dummy"),
             api_base=base,
-            temperature=temperature
+            temperature=temperature,
+            extra_body=extra_body if extra_body else None
         )
     else:
         raise ValueError(f"Unknown provider: {provider}")

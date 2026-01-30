@@ -262,6 +262,28 @@ def render_sidebar():
         
         verbose = st.toggle("📝 Подробные логи", value=False)
         
+        # Thinking mode для vLLM (Qwen3, DeepSeek и др.)
+        thinking_enabled = False
+        thinking_budget = 4096
+        if provider == "vllm":
+            st.divider()
+            st.markdown('<div class="card"><div class="card-title">🧠 Режим мышления</div></div>', 
+                        unsafe_allow_html=True)
+            thinking_enabled = st.toggle(
+                "💭 Включить thinking mode", 
+                value=False,
+                help="Для моделей с reasoning (Qwen3, DeepSeek R1). Модель будет 'думать' перед ответом."
+            )
+            if thinking_enabled:
+                thinking_budget = st.slider(
+                    "Бюджет токенов на размышления:",
+                    min_value=1024,
+                    max_value=16384,
+                    value=4096,
+                    step=512,
+                    help="Количество токенов для внутренних рассуждений модели"
+                )
+        
         st.divider()
         
         # Team-specific settings
@@ -354,12 +376,18 @@ def render_sidebar():
                 add_message("user", "Сгенерируй документацию для проекта")
                 st.rerun()
     
-    return provider, verbose, structured, selected_project if st.session_state.team_mode == "dwh" else None, selected_agents if st.session_state.team_mode == "dwh" else None
+    return provider, verbose, structured, selected_project if st.session_state.team_mode == "dwh" else None, selected_agents if st.session_state.team_mode == "dwh" else None, thinking_enabled, thinking_budget
 
 
 # === MAIN CHAT ===
 def render_chat(provider: str, verbose: bool, structured: bool, 
-                selected_project: str | None, selected_agents: list | None):
+                selected_project: str | None, selected_agents: list | None,
+                thinking_enabled: bool = False, thinking_budget: int = 4096):
+    
+    # Устанавливаем переменные окружения для thinking mode
+    import os
+    os.environ["VLLM_ENABLE_THINKING"] = "true" if thinking_enabled else "false"
+    os.environ["VLLM_THINKING_BUDGET"] = str(thinking_budget)
     
     # Header
     team_name = "Исследовательская команда" if st.session_state.team_mode == "research" else "DWH Команда"
@@ -372,7 +400,7 @@ def render_chat(provider: str, verbose: bool, structured: bool,
         <div class="header-bar">
             <div>
                 <div class="header-title">🤖 Multi-Agent System</div>
-                <div class="header-subtitle">{team_name} • {provider.upper()}</div>
+                <div class="header-subtitle">{team_name} • {provider.upper()}{' 🧠 Thinking' if thinking_enabled else ''}</div>
             </div>
             <div>{status}</div>
         </div>
